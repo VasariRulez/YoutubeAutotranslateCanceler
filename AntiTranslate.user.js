@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Youtube Auto-translate Canceler
-// @namespace    https://github.com/adriaan1313/YoutubeAutotranslateCanceler
-// @version      0.69.4
+// @namespace    https://github.com/VasariRulez/YoutubeAutotranslateCanceler
+// @version      0.69.5
 // @description  Remove auto-translated youtube titles
 // @author       Pierre Couy
 // @match        https://www.youtube.com/*
@@ -91,14 +91,26 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
         // REFERENCED VIDEO TITLES - find video link elements in the page that have not yet been changed
         var links = Array.prototype.slice.call(document.getElementsByTagName("a")).filter(a => {
             return (a.id == 'video-title-link' || a.id == 'video-title') &&
-                !a.classList.contains("ytd-video-preview") &&
-                !a.href.includes("list=") &&
+                !(
+                    a.classList.contains("ytd-video-preview")
+                    || a.href.includes("list=")
+                    || a.href.includes("googleadservices") // Here we ignore googleadservices links, since they are not videos and have different structure
+            ) &&
                 alreadyChanged.indexOf(a) == -1;
         });
 
         var spans = Array.prototype.slice.call(document.getElementsByTagName("span")).filter(a => {
-            return a.id == 'video-title' &&
-                !(a.parentNode.href?.includes("list=") || a.classList.contains("ytd-radio-renderer") || a.classList.contains("ytd-playlist-renderer") ) &&
+            return (
+                    a.id == 'video-title' 
+                    // I don't remember why I added this line, maybe it was for a specific temporary layout change but i think it was for the homepage video titles
+                    || (a.className == 'yt-core-attributed-string yt-core-attributed-string--white-space-pre-wrap') && a.parentNode.className == 'yt-lockup-metadata-view-model-wiz__title'
+                ) &&
+                !(
+                    a.parentNode.href?.includes("list=") 
+                    || a.classList.contains("ytd-radio-renderer") 
+                    || a.classList.contains("ytd-playlist-renderer")
+                    || a.parentNode.href?.includes("googleadservices") // Here we ignore googleadservices links, since they are not videos and have different structure
+                ) &&
                 alreadyChanged.indexOf(a) == -1;
         });
 
@@ -155,6 +167,7 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
                                     if (links[i].tagName == "SPAN") {
                                         links[i].innerText = originalTitle;
                                     } else {
+                                        links[i].title = originalTitle; // This sets the tooltip title on mouseover
                                         links[i].querySelector("yt-formatted-string").innerText = originalTitle;
                                     }
                                 }
@@ -182,7 +195,7 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
         }
 
         if (mainVidID == "" && changedDescription) {
-            var pageTitle = document.querySelector("h1.style-scope > yt-formatted-string");
+            var pageTitle = document.querySelector("h1.style-scope.ytd-watch-metadata > yt-formatted-string.style-scope.ytd-watch-metadata"); // It was "h1.style-scope > yt-formatted-string" but a change in layout broke it
             if (pageTitle.attributes["is-empty"] != undefined) {
                 pageTitle.removeAttribute("is-empty");
             }
@@ -223,7 +236,7 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
             console.log("Failed to find main video description on page!");
         }
         var videoDescription = data[0].snippet.description;
-        var pageTitle = document.querySelector("h1.style-scope > yt-formatted-string");
+        var pageTitle = document.querySelector("h1.style-scope.ytd-watch-metadata > yt-formatted-string.style-scope.ytd-watch-metadata"); // It was "h1.style-scope > yt-formatted-string" but a change in layout broke it
         if (pageDescription != null && videoDescription != null) {
             // linkify replaces links correctly, but without redirect or other specific youtube stuff (no problem if missing)
             // Still critical, since it replaces ALL descriptions, even if it was not translated in the first place (no easy comparision possible)
@@ -236,6 +249,7 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
             pageDescription.attributes["changed"] = true;
             console.log("Reverting main video title '" + pageTitle.innerText + "' to '" + data[0].snippet.title + "'");
             pageTitle.innerText = data[0].snippet.title;
+            pageTitle.title = data[0].snippet.title; // This sets the tooltip title on mouseover
             cachedTitle = data[0].snippet.title;
             // Just force a title update, screw youtube's title refresh logic
             pageTitle.removeAttribute("is-empty");
@@ -249,7 +263,8 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
     }
 
     // Youtube fucked the description layout up by force reloading it when you click on the "show more" or "show less" button
-    // So this is the workaround. Ideally injecting directly the object that contains the decsription or modifying the behavior of these buttons is better.
+    // So this is the workaround. 
+    // --Ideally injecting directly the object that contains the description or modifying the behavior of these buttons is better.-- Done in addExpandButtonClickListener function below
     // Run separately from changeTitles() to be more responsive. Hopefully won't cause race condition. Shouldn't, but might.
     function replaceVideoDescCached() {
         if (!changedDescription || noDescription) {
@@ -266,8 +281,66 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
         }
     }
 
+    // This function is called when the description is expanded by clicking the "show more" button or by clicking the description itself
+    // It replaces the description with the cached description
+    function replaceDescOnExpand(){
+        if (!changedDescription || noDescription) {
+            return;
+        }
+        var pageDescription = document.querySelector("div#description-inner > ytd-text-inline-expander#description-inline-expander > yt-attributed-string.style-scope.ytd-text-inline-expander");
+        if (pageDescription != null && !pageDescription.hasAttribute("hidden")) {
+            var desc = pageDescription.querySelector('span')
+            if(desc != null){
+                if(useTrusted){
+                    desc.innerHTML = window.trustedTypes.defaultPolicy.createHTML(cachedDescription);
+                } else {
+                    desc.innerHTML = cachedDescription;
+                }
+            }
+        }
+    }
+
+    // This function adds an event listener to the expand button, the description itself and the collapse button removing the old polling for the description
+    function addExpandButtonClickListener() {
+        // Check if the expand button is present on the page
+        const expandButton = document.querySelector('tp-yt-paper-button#expand');
+        if (!expandButton) {
+            console.error("Expand button not found.");
+            return;
+        }
+        // Check if the description is present on the page
+        const descriptionInteraction = document.querySelector('div#description');
+        if (!descriptionInteraction) {
+            console.error("Description Interaction not found.");
+            return;
+        }
+        // Check if the collapse button is present on the page
+        const collapseButton = document.querySelector('tp-yt-paper-button#collapse');
+        if (!collapseButton) {
+            console.error("Collapse button not found.");
+            return;
+        }
+
+         //If we have the buttons, we don't need to keep checking for them
+        clearInterval(intervalID);
+
+        // Add event listeners to the buttons and the description itself
+        expandButton.addEventListener('click', replaceDescOnExpand);
+        descriptionInteraction.addEventListener('click', replaceDescOnExpand);
+        collapseButton.addEventListener('click', replaceVideoDescCached);
+
+        console.log("Event listener added to the expand button.");
+    }
     // Execute every seconds in case new content has been added to the page
     // DOM listener would be good if it was not for the fact that Youtube changes its DOM frequently
     setInterval(changeTitles, MAIN_POLLING_INTERVAL);
-    setInterval(replaceVideoDescCached, DESCRIPTION_POLLING_INTERVAL);
+
+    // This is now done in addExpandButtonClickListener function
+    //setInterval(replaceVideoDescCached, DESCRIPTION_POLLING_INTERVAL); 
+
+    // Check every 5 seconds if the expand button, collapse button, and description are present on the page.
+    // Add event listeners to them if they are present, otherwise retry in 5 seconds.
+    // This polling was added because these elements were not present on the homepage, only on the video page.
+    // With the new layout, these elements seems to be present on the homepage as well, but the polling is kept as a precaution.
+    const intervalID = setInterval(addExpandButtonClickListener,5000); 
 })();
