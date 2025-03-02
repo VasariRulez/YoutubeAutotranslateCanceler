@@ -250,6 +250,7 @@ const DESCRIPTION_POLLING_INTERVAL = 200;
             console.log("Reverting main video title '" + pageTitle.innerText + "' to '" + data[0].snippet.title + "'");
             pageTitle.innerText = data[0].snippet.title;
             pageTitle.title = data[0].snippet.title; // This sets the tooltip title on mouseover
+            fullscreenTitle.innerText = data[0].snippet.title; // This sets the title you see when the video is fullscreen
             cachedTitle = data[0].snippet.title;
             // Just force a title update, screw youtube's title refresh logic
             pageTitle.removeAttribute("is-empty");
