@@ -4,7 +4,9 @@
 // @version      0.69.5
 // @description  Remove auto-translated youtube titles
 // @author       Pierre Couy
-// @match        https://www.youtube.com/*
+// @match        https://www.youtube.com/
+// @match        https://www.youtube.com/watch*
+// @match        https://www.youtube.com/shorts/*
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @grant        GM.deleteValue
