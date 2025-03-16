@@ -7,6 +7,7 @@
 // @match        https://www.youtube.com/
 // @match        https://www.youtube.com/watch*
 // @match        https://www.youtube.com/shorts/*
+// @match        https://www.youtube.com/feed/history
 // @grant        GM.setValue
 // @grant        GM.getValue
 // @grant        GM.deleteValue
